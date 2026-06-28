@@ -68,6 +68,11 @@ run --width 12 deploy staging | grep -q '\.\.\.'; pass "--width truncates to a s
 if run --width 12 deploy staging | grep -q "check health"; then echo "FAIL: --width did not truncate"; exit 1; fi
 pass "--width hides text beyond the budget"
 run --full deploy staging | grep -q "check health"; pass "--full shows the complete prompt"
+# /ph injects a lean default width; a later --width from the user must override
+# it (argparse last-wins). These guard that contract.
+if run --width 12 --width 400 deploy staging | grep -q '\.\.\.'; then echo "FAIL: later --width did not win"; exit 1; fi
+pass "a later --width overrides an earlier one (last-wins)"
+run --width 400 --width 12 deploy staging | grep -q '\.\.\.'; pass "earlier --width is overridden by a later smaller one"
 
 # --- ph shell wrapper (zero-token shim) ---
 sh -n "$HERE/ph"; pass "ph wrapper: valid shell syntax"
