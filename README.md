@@ -194,7 +194,12 @@ clean to select, pipe, or rerun:
 ph --copy 2 livekit token            # by row number (for the list in front of you)
 ph --copy 7b1e004 livekit token      # by stable id  (survives new history)
 ph --copy 7b1e004 livekit --clip     # …and send it straight to the clipboard
+ph copy 7b1e004                      # subcommand sugar — same as --copy (also: `show`)
 ```
+
+The last line is shorthand: if the first word is `copy` or `show` and the next
+looks like a row number or an id, `ph` treats it as `--copy`/`--show`. (Ordinary
+searches like `ph copy paste` are unaffected — the second word isn't an id.)
 
 **Why the id?** Row numbers shift as you keep prompting — `#2` today may be `#5`
 tomorrow. The id is a hash of the prompt text, so it always resolves to the same

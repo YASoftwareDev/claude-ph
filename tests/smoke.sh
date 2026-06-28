@@ -44,6 +44,12 @@ run --copy zzzzzzz deploy staging | grep -q "no match"; pass "--copy with unknow
 clip_out=$(run --copy 1 deploy staging --clip 2>/dev/null)
 [ "$clip_out" = "deploy the staging environment and check health" ]; pass "--clip still prints the prompt (graceful fallback)"
 
+# --- copy/show subcommand sugar (no leading --) ---
+[ "$(run copy 1 deploy staging)" = "deploy the staging environment and check health" ]; pass "copy-N subcommand works without --"
+[ "$(run copy 1)" = "deploy the staging environment and check health" ]; pass "copy-N subcommand needs no query"
+[ "$(run show "$ID" deploy staging)" = "deploy the staging environment and check health" ]; pass "show-ID subcommand works without --"
+run copy paste | grep -q "no match"; pass "copy <non-id> stays a normal search (not hijacked)"
+
 run --projects | grep -q "web-dashboard"; pass "--projects lists projects"
 run zzzznope | grep -q "no match"; pass "empty-state on no match"
 run --regex "deploy|tests" | grep -q "unique match"; pass "--regex search"

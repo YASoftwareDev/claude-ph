@@ -19,6 +19,7 @@ Usage:
   ph.py --no-dedup token         show every occurrence (do not collapse duplicates)
   ph.py --copy 3 token           print ONLY match #3's full text (clean to copy/rerun)
   ph.py --copy a3f2c9 token      print the match with that stable id (drift-proof)
+  ph.py copy a3f2c9              subcommand sugar for --copy (also: show)
   ph.py --copy 3 token --clip    copy that prompt straight to the system clipboard
   ph.py --json token             output matches as JSON (for scripts/piping)
   ph.py --projects               list every project with history + counts/date span
@@ -141,6 +142,16 @@ def main():
     ap.add_argument("--json", action="store_true", help="output matches as JSON")
     ap.add_argument("--projects", action="store_true", help="list projects with history")
     args = ap.parse_args()
+
+    # Subcommand sugar: `ph copy N|ID [terms]` / `ph show N|ID [terms]` behave
+    # like `--copy N|ID [terms]`. Only fires when the first word is copy/show
+    # and the next looks like a row number or hex id, so ordinary searches such
+    # as `ph copy paste` are left untouched.
+    if (args.copy is None and len(args.terms) >= 2
+            and args.terms[0].lower() in ("copy", "show")
+            and re.fullmatch(r"[0-9a-fA-F]+", args.terms[1])):
+        args.copy = args.terms[1]
+        args.terms = args.terms[2:]
 
     def parse_date(s):
         try:
