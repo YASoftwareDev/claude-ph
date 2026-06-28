@@ -14,16 +14,24 @@ Usage:
   ph.py --until 2026-03-31 x     only entries on/before a date (YYYY-MM-DD)
   ph.py --limit 80 train         show up to 80 matches (default 30)
   ph.py --full token             show full prompt text (no truncation)
+  ph.py --width 600 token        show up to 600 chars per result (default 840)
   ph.py --oldest setup           oldest matches first (default: newest first)
   ph.py --no-dedup token         show every occurrence (do not collapse duplicates)
   ph.py --copy 3 token           print ONLY match #3's full text (clean to copy/rerun)
+  ph.py --copy a3f2c9 token      print the match with that stable id (drift-proof)
+  ph.py copy a3f2c9              subcommand sugar for --copy (also: show)
+  ph.py --copy 3 token --clip    copy that prompt straight to the system clipboard
   ph.py --json token             output matches as JSON (for scripts/piping)
   ph.py --projects               list every project with history + counts/date span
+
+Each result carries a short stable id (a hash of the prompt text). Unlike the
+row number, the id never changes as history grows, so `--copy <id>` always
+returns the same prompt. `--show` is an alias for `--copy`.
 """
-import sys, os, json, re, argparse, datetime
+import sys, os, json, re, argparse, datetime, hashlib
 
 HIST = os.path.expanduser("~/.claude/history.jsonl")
-TRUNC = 280
+TRUNC = 840  # default per-result character budget before truncation (override with --width)
 
 
 def load():
@@ -72,6 +80,34 @@ def highlight(text, terms):
     return text
 
 
+def pid(display):
+    """Short stable id for a prompt, derived from its text.
+
+    Content-addressed on purpose: it is invariant across repeats, dedup, and
+    new history, so `--copy <id>` always resolves to the same prompt — unlike a
+    row number, which shifts as prompts are added.
+    """
+    return hashlib.sha1(display.strip().encode("utf-8")).hexdigest()[:7]
+
+
+def to_clipboard(text):
+    """Best-effort copy to the system clipboard. Returns the tool used, or None.
+
+    Stdlib only: probes for a clipboard CLI and pipes to the first one found.
+    """
+    import shutil, subprocess
+    for cmd in (["wl-copy"], ["pbcopy"], ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"], ["clip.exe"]):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text.encode("utf-8"), check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return cmd[0]
+            except Exception:
+                continue
+    return None
+
+
 def projects_overview(rows):
     from collections import defaultdict
     byp = defaultdict(list)
@@ -95,12 +131,27 @@ def main():
     ap.add_argument("--until", help="only entries on/before this date (YYYY-MM-DD)")
     ap.add_argument("--limit", type=int, default=30, help="max matches to show (default 30)")
     ap.add_argument("--full", action="store_true", help="show full prompt text (no truncation)")
+    ap.add_argument("--width", type=int, default=TRUNC, metavar="N",
+                    help=f"max characters shown per result before truncating (default {TRUNC}); --full overrides")
     ap.add_argument("--oldest", action="store_true", help="oldest matches first")
     ap.add_argument("--no-dedup", action="store_true", help="show every occurrence, don't collapse duplicates")
-    ap.add_argument("--copy", type=int, metavar="N", help="print only match N's full text")
+    ap.add_argument("--copy", "--show", dest="copy", metavar="N|ID",
+                    help="print only that match's full text (by row number or stable id)")
+    ap.add_argument("--clip", action="store_true",
+                    help="with --copy, send the prompt to the system clipboard")
     ap.add_argument("--json", action="store_true", help="output matches as JSON")
     ap.add_argument("--projects", action="store_true", help="list projects with history")
     args = ap.parse_args()
+
+    # Subcommand sugar: `ph copy N|ID [terms]` / `ph show N|ID [terms]` behave
+    # like `--copy N|ID [terms]`. Only fires when the first word is copy/show
+    # and the next looks like a row number or hex id, so ordinary searches such
+    # as `ph copy paste` are left untouched.
+    if (args.copy is None and len(args.terms) >= 2
+            and args.terms[0].lower() in ("copy", "show")
+            and re.fullmatch(r"[0-9a-fA-F]+", args.terms[1])):
+        args.copy = args.terms[1]
+        args.terms = args.terms[2:]
 
     def parse_date(s):
         try:
@@ -156,20 +207,41 @@ def main():
     if args.oldest:
         hits = hits[::-1]
 
-    # --copy: dump one entry raw and stop
+    # --copy / --show: dump one entry raw and stop. Accepts a row number or a
+    # stable id (content hash). Optionally pipe it to the system clipboard.
     if args.copy is not None:
-        if 1 <= args.copy <= len(hits):
-            print(hits[args.copy - 1]["display"])
+        ref = args.copy.strip()
+        sel = None
+        if ref.isdigit() and 1 <= int(ref) <= len(hits):
+            sel = hits[int(ref) - 1]
         else:
-            print(f"(no match #{args.copy}; there are {len(hits)})")
+            cands = [h for h in hits if pid(h["display"]).startswith(ref.lower())]
+            if len(cands) == 1:
+                sel = cands[0]
+            elif len(cands) > 1:
+                print(f"(id {ref!r} is ambiguous — matches {len(cands)} prompts; use more characters)")
+                return
+        if sel is None:
+            print(f"(no match {ref!r}; there are {len(hits)} hits — use 1..{len(hits)} or a listed id)")
+            return
+        text = sel["display"]
+        if args.clip:
+            tool = to_clipboard(text)
+            note = (f"copied to clipboard via {tool}" if tool
+                    else "no clipboard tool found (wl-copy/pbcopy/xclip/xsel/clip.exe); printed below instead")
+            print(note, file=sys.stderr)
+        print(text)
         return
+    if args.clip:
+        print("--clip only applies with --copy/--show N|ID", file=sys.stderr)
 
     shown = hits[: args.limit]
     q = args.regex or (" ".join(terms) if terms else "(recent, all projects)")
 
     if args.json:
         print(json.dumps([
-            {"rank": i, "timestamp": when(r["timestamp"]).isoformat(timespec="seconds"),
+            {"rank": i, "id": pid(r["display"]),
+             "timestamp": when(r["timestamp"]).isoformat(timespec="seconds"),
              "project": r.get("project", ""), "count": r["_n"], "display": r["display"]}
             for i, r in enumerate(shown, 1)
         ], indent=2, ensure_ascii=False))
@@ -188,14 +260,15 @@ def main():
         proj = os.path.basename(r.get("project", "") or "?")
         reps = f"  ×{r['_n']}" if r["_n"] > 1 else ""
         text = " ".join(r["display"].split())
-        if not args.full and len(text) > TRUNC:
-            text = text[: TRUNC - 3] + "..."
+        if not args.full and len(text) > args.width:
+            text = (text[: args.width - 3] + "...") if args.width > 3 else text[: args.width]
         if terms:
             text = highlight(text, terms)
-        print(f"[{i}] {stamp} · {rel(dt, now):>9}  ({proj}){reps}\n    {text}\n")
+        print(f"[{i}] {pid(r['display'])} · {stamp} · {rel(dt, now):>9}  ({proj}){reps}\n    {text}\n")
     if len(hits) > len(shown):
         print(f"... {len(hits) - len(shown)} more — add a term to narrow or raise --limit.")
-    print("Reply with a number to rerun that prompt, or `--full` / `--copy N` for complete text.")
+    print("Reply with a number to rerun that prompt, or `--copy N|ID` "
+          "(add `--clip` to copy to clipboard) / `--full` for complete text.")
 
 
 if __name__ == "__main__":
