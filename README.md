@@ -44,8 +44,12 @@ every day, no cap.
   times? You see it once, marked `×12`.
 - **Match highlighting** — your search terms are bolded in each result.
 - **Friendly dates** — `Apr 18 17:55 · 2mo ago`.
-- `--full` for complete prompt text, `--copy N` to print one prompt raw,
-  `--projects` for an overview of every project that has history.
+- `--full` for complete prompt text, `--copy N|ID` to print one prompt raw
+  (with `--clip` to drop it on your clipboard), `--projects` for an overview of
+  every project that has history.
+- **Stable per-prompt ids** — every result carries a short hash of its text, so
+  `--copy <id>` always resolves to the same prompt even as new history shifts
+  the row numbers.
 - **Zero-token shell command** — a bundled `ph` wrapper runs the same search
   straight from your terminal (or `!ph` inside Claude Code) with no model turn,
   so plain searches cost nothing. See [`/ph` vs `ph`](#ph-vs-ph--interactive-vs-zero-token).
@@ -129,7 +133,9 @@ Inside a Claude Code session:
 | Flag | Effect |
 |------|--------|
 | `--full` | Show full prompt text instead of truncating long prompts |
-| `--copy N` | Print **only** match N's full text, raw — clean to copy or rerun |
+| `--copy N\|ID` | Print **only** that match's full text, raw — by row number **or** stable id |
+| `--show N\|ID` | Alias of `--copy` |
+| `--clip` | With `--copy`/`--show`, send the prompt straight to the system clipboard |
 | `--project NAME` | Restrict to projects whose path contains `NAME` |
 | `--days N` | Only prompts from the last `N` days |
 | `--since YYYY-MM-DD` | Only prompts on/after this date |
@@ -138,7 +144,7 @@ Inside a Claude Code session:
 | `--oldest` | Oldest matches first (default: newest first) |
 | `--no-dedup` | Show every occurrence; don't collapse duplicates |
 | `--regex P` | Treat the query as a single regular expression |
-| `--json` | Output matches as JSON (rank, timestamp, project, count, display) — for scripting |
+| `--json` | Output matches as JSON (rank, id, timestamp, project, count, display) — for scripting |
 | `--projects` | List every project that has history, with prompt counts and date spans |
 
 See [`examples/example-output.md`](examples/example-output.md) for a full
@@ -151,6 +157,8 @@ sample session showing the numbered results, highlighting, `×N` collapsing,
 /ph livekit token            # prompts containing BOTH "livekit" and "token"
 /ph --full barge-in          # show the complete text of matching prompts
 /ph --copy 1 livekit token   # print match #1's full prompt, raw — ready to reuse
+/ph --copy a3f2c9 livekit    # print the prompt with that stable id (position-proof)
+ph  --copy 1 livekit --clip  # (shell) copy match #1 straight to the clipboard
 /ph --project asr-eval deploy# only the "asr-eval" project's prompts mentioning deploy
 /ph --days 30 setup          # "setup" prompts from the last 30 days
 /ph --limit 80 train         # widen the result list to 80
@@ -161,18 +169,37 @@ sample session showing the numbered results, highlighting, `×N` collapsing,
 
 ### Rerun-by-number
 
-After any search you get a numbered list:
+After any search you get a numbered list; each row also shows a short **stable
+id** (the `a3f2c9`-style token after the number):
 
 ```
-[1] Apr 18 17:55 ·   2mo ago  (livekit-agent)
+[1] a3f2c9 · Apr 18 17:55 ·   2mo ago  (livekit-agent)
     Close out the remaining failing e2e tests so the suite is green ...
-[2] Apr 18 11:44 ·   2mo ago  (livekit-agent)  ×3
+[2] 7b1e004 · Apr 18 11:44 ·   2mo ago  (livekit-agent)  ×3
     Make every currently-failing test in tests/e2e/ pass ...
 ```
 
 Reply with just `2` and Claude treats prompt #2 as the one you want to reuse —
 restating it and running it, adapting any stale paths to your current project.
 Say `edit 2: but target the asr repo` to tweak it before running.
+
+### Copy one full prompt
+
+To grab a single prompt's complete text, use `--copy` (alias `--show`). It
+prints **only** that prompt, raw — no header, no highlighting, no `…` — so it is
+clean to select, pipe, or rerun:
+
+```sh
+ph --copy 2 livekit token            # by row number (for the list in front of you)
+ph --copy 7b1e004 livekit token      # by stable id  (survives new history)
+ph --copy 7b1e004 livekit --clip     # …and send it straight to the clipboard
+```
+
+**Why the id?** Row numbers shift as you keep prompting — `#2` today may be `#5`
+tomorrow. The id is a hash of the prompt text, so it always resolves to the same
+prompt regardless of position, dedup, or how the search was phrased. `--clip`
+auto-detects your clipboard tool (`wl-copy` / `pbcopy` / `xclip` / `xsel` /
+`clip.exe`); if none is available it just prints, so nothing breaks.
 
 ## How it works
 

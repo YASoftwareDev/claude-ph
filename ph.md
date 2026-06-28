@@ -1,6 +1,6 @@
 ---
 description: Search your FULL Claude Code prompt history (all projects, all time) — bypasses the native 100-entry Ctrl+R cap
-argument-hint: [terms] | --full | --copy N | --json | --project NAME | --since DATE | --until DATE | --days N | --no-dedup | --oldest | --regex P | --projects
+argument-hint: [terms] | --full | --copy N|ID | --show N|ID | --clip | --json | --project NAME | --since DATE | --until DATE | --days N | --no-dedup | --oldest | --regex P | --projects
 allowed-tools: Bash(python3:*)
 ---
 

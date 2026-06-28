@@ -27,7 +27,22 @@ run deploy staging | grep -q "2 unique match for 'deploy staging'"; pass "dedup 
 run deploy staging | grep -q "${TIMES}2"; pass "repeat marker shows x2"
 
 out=$(run --copy 1 deploy staging)
-[ "$out" = "deploy the staging environment and check health" ]; pass "--copy prints raw single prompt"
+[ "$out" = "deploy the staging environment and check health" ]; pass "--copy by row number prints raw prompt"
+
+# --- stable ids ---
+# The id is a content hash, so it must be identical no matter the query that
+# surfaced the prompt — that's what makes --copy <id> drift-proof.
+ID=$(run --json deploy staging | python3 -c 'import sys,json; print(json.load(sys.stdin)[0]["id"])')
+[ -n "$ID" ]; pass "results carry a stable id (json)"
+ID2=$(run --json --no-dedup deploy | python3 -c 'import sys,json; rows=json.load(sys.stdin); print(next(r["id"] for r in rows if r["display"].startswith("deploy the staging")))')
+[ "$ID" = "$ID2" ]; pass "id is stable across different queries"
+[ "$(run --copy "$ID" deploy staging)" = "deploy the staging environment and check health" ]; pass "--copy by id resolves the prompt"
+[ "$(run --show "$ID" deploy staging)" = "deploy the staging environment and check health" ]; pass "--show is an alias of --copy"
+run --copy zzzzzzz deploy staging | grep -q "no match"; pass "--copy with unknown id reports no match"
+
+# --- --clip degrades gracefully when no clipboard tool is usable ---
+clip_out=$(run --copy 1 deploy staging --clip 2>/dev/null)
+[ "$clip_out" = "deploy the staging environment and check health" ]; pass "--clip still prints the prompt (graceful fallback)"
 
 run --projects | grep -q "web-dashboard"; pass "--projects lists projects"
 run zzzznope | grep -q "no match"; pass "empty-state on no match"
