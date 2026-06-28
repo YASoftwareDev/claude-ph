@@ -265,6 +265,15 @@ a real terminal changes.
 standard library only) — install stays a plain file copy. On a platform without
 `curses`, `ph` falls back to the non-interactive listing.
 
+**Clipboard over SSH / tmux / containers.** `^Y`, `^B`, and `--clip` try, in
+order: a native clipboard tool (`wl-copy` / `pbcopy` / `xclip` / `xsel` /
+`clip.exe`) → **tmux** (`load-buffer -w`, which works on a headless box and,
+with `set-clipboard on`, also forwards to your local clipboard) → an **OSC 52**
+terminal escape (routes the copy to your local machine over SSH). So copying
+works even with no clipboard daemon — provided your terminal (and tmux) allow it
+(tmux: `set -g set-clipboard on`). If everything is blocked, press `Enter` to
+print the prompt and pipe it instead.
+
 ## How it works
 
 `ph.md` is a Claude Code custom slash command. Its body runs the bundled Python

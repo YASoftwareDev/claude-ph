@@ -70,4 +70,11 @@ check(ph.collect_hits(rows, oldest=True, now=anchor)[0]["display"] == "fix the t
       "oldest reverses order")
 check(ph.pid(hits[0]["display"]) == ph.pid("deploy staging"), "pid is content-addressed")
 
+# --- osc52_sequence: terminal-routed clipboard escape ---
+import base64  # noqa: E402
+seq = ph.osc52_sequence("hi there ✓")
+check(seq.startswith("\033]52;c;") and seq.endswith("\a"), "osc52 sequence framing")
+check(base64.b64decode(seq[len("\033]52;c;"):-1]).decode() == "hi there ✓",
+      "osc52 payload base64 round-trips (utf-8)")
+
 print(f"test_logic: all {n} assertions passed")
