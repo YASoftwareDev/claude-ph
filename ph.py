@@ -14,7 +14,7 @@ Usage:
   ph.py --until 2026-03-31 x     only entries on/before a date (YYYY-MM-DD)
   ph.py --limit 80 train         show up to 80 matches (default 30)
   ph.py --full token             show full prompt text (no truncation)
-  ph.py --width 600 token        show up to 600 chars per result (default 280)
+  ph.py --width 600 token        show up to 600 chars per result (default 840)
   ph.py --oldest setup           oldest matches first (default: newest first)
   ph.py --no-dedup token         show every occurrence (do not collapse duplicates)
   ph.py --copy 3 token           print ONLY match #3's full text (clean to copy/rerun)
@@ -31,7 +31,7 @@ returns the same prompt. `--show` is an alias for `--copy`.
 import sys, os, json, re, argparse, datetime, hashlib
 
 HIST = os.path.expanduser("~/.claude/history.jsonl")
-TRUNC = 280
+TRUNC = 840  # default per-result character budget before truncation (override with --width)
 
 
 def load():
