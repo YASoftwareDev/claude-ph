@@ -23,6 +23,8 @@ Usage:
   ph.py --copy 3 token --clip    copy that prompt straight to the system clipboard
   ph.py --json token             output matches as JSON (for scripts/piping)
   ph.py --projects               list every project with history + counts/date span
+  ph.py -i / --interactive       launch the fuzzy picker (also auto-launches on a
+                                 bare `ph` in a terminal); piping/flags bypass it
 
 Each result carries a short stable id (a hash of the prompt text). Unlike the
 row number, the id never changes as history grows, so `--copy <id>` always
@@ -121,6 +123,362 @@ def projects_overview(rows):
     print("\nTip: /ph --project NAME <terms>  to search inside one project.")
 
 
+def parse_date(s):
+    try:
+        return datetime.datetime.strptime(s, "%Y-%m-%d")
+    except ValueError:
+        sys.exit(f"invalid date {s!r} — use YYYY-MM-DD")
+
+
+def collect_hits(rows, *, terms=None, regex=None, project=None, days=None,
+                 since=None, until=None, no_dedup=False, oldest=False, now=None):
+    """Filter + dedup + order — the single source of truth for both the CLI and
+    the interactive picker (which layers fuzzy matching on top, never forking
+    this logic). `since`/`until` are datetimes (`until` exclusive); `now` anchors
+    `--days`. Each returned hit carries `_n` (repeat count). Read-only."""
+    if now is None:
+        now = when(rows[0]["timestamp"]) if rows else datetime.datetime.now()
+    out = rows
+    if days:
+        cut = now - datetime.timedelta(days=days)
+        out = [r for r in out if when(r["timestamp"]) >= cut]
+    if since:
+        out = [r for r in out if when(r["timestamp"]) >= since]
+    if until:
+        out = [r for r in out if when(r["timestamp"]) < until]
+    if project:
+        p = project.lower()
+        out = [r for r in out if p in (r.get("project", "")).lower()]
+
+    if regex:
+        rx = re.compile(regex, re.I)
+        match = lambda d: rx.search(d)
+    elif terms:
+        low = [t.lower() for t in terms]
+        match = lambda d: all(t in d.lower() for t in low)
+    else:
+        match = None
+
+    seen, hits = {}, []
+    for r in out:
+        if match is not None and not match(r["display"]):
+            continue
+        key = r["display"].strip()
+        if not no_dedup and key in seen:
+            seen[key]["_n"] += 1
+            continue
+        r = dict(r, _n=1)
+        if not no_dedup:
+            seen[key] = r
+        hits.append(r)
+    if oldest:
+        hits = hits[::-1]
+    return hits
+
+
+def fuzzy_score(query, text):
+    """Case-insensitive subsequence score; higher is better, None if no match.
+    Rewards compact, early matches (a contiguous substring scores highest) so the
+    picker can rank by match quality, then recency."""
+    if not query:
+        return 0
+    q, t = query.lower(), text.lower()
+    first = t.find(q[0])
+    if first == -1:
+        return None
+    last, gaps = first, 0
+    for ch in q[1:]:
+        nxt = t.find(ch, last + 1)
+        if nxt == -1:
+            return None
+        if nxt > last + 1:
+            gaps += nxt - last - 1
+        last = nxt
+    span = last - first + 1
+    return -(span + 2 * gaps + first)
+
+
+def should_interactive(args, stdout_isatty):
+    """Decide whether to launch the interactive picker. Pure / unit-tested.
+    Result flags and a non-TTY stdout always force the non-interactive path."""
+    if args.copy is not None or args.json or args.projects or args.clip:
+        return False
+    if not stdout_isatty:
+        return False
+    if getattr(args, "interactive", False):
+        return True
+    return not args.terms and not args.regex
+
+
+# ---------------------------------------------------------------------------
+# Interactive curses picker (stdlib only; activated per should_interactive()).
+# ---------------------------------------------------------------------------
+
+def _addstr(stdscr, y, x, text, w, attr=0):
+    import curses
+    try:
+        stdscr.addnstr(y, x, text, max(0, w - x), attr)
+    except curses.error:
+        pass
+
+
+def _status_tags(state, n_filtered, n_base):
+    tags = [f"{n_filtered}/{n_base}"]
+    if state["project"]:
+        tags.append(f"[proj:{state['project']}]")
+    if state["days"]:
+        tags.append(f"[≤{state['days']}d]")
+    if state["since_str"]:
+        tags.append(f"[≥{state['since_str']}]")
+    if state["until_str"]:
+        tags.append(f"[≤{state['until_str']}]")
+    tags.append("[dedup:off]" if state["no_dedup"] else "[dedup:on]")
+    tags.append("[order:old]" if state["oldest"] else "[order:new]")
+    return "  ".join(tags)
+
+
+def _ask(stdscr, y, label, w):
+    """Inline mini-prompt at row y; returns the typed string, or None on Esc."""
+    import curses
+    curses.curs_set(1)
+    buf = ""
+    while True:
+        stdscr.move(y, 0)
+        stdscr.clrtoeol()
+        _addstr(stdscr, y, 0, label + buf, w, curses.A_BOLD)
+        ch = stdscr.getch()
+        if ch in (curses.KEY_ENTER, 10, 13):
+            curses.curs_set(0)
+            return buf
+        if ch == 27:
+            curses.curs_set(0)
+            return None
+        if ch in (curses.KEY_BACKSPACE, 127, 8):
+            buf = buf[:-1]
+        elif 32 <= ch <= 126:
+            buf += chr(ch)
+
+
+def _viewer(stdscr, header, text):
+    """Full-screen scrollable view of one prompt's untruncated text."""
+    import curses, textwrap
+    while True:
+        h, w = stdscr.getmaxyx()
+        lines = []
+        for para in text.split("\n"):
+            lines.extend(textwrap.wrap(para, max(1, w - 1)) or [""])
+        page = max(1, h - 2)
+        off = 0
+        max_off = max(0, len(lines) - page)
+        while True:
+            stdscr.erase()
+            _addstr(stdscr, 0, 0, header, w, curses.A_BOLD)
+            for i in range(page):
+                if off + i < len(lines):
+                    _addstr(stdscr, 1 + i, 0, lines[off + i], w)
+            _addstr(stdscr, h - 1, 0, "↑↓/PgUp/PgDn scroll · esc/q back",
+                    w, curses.A_REVERSE)
+            stdscr.refresh()
+            ch = stdscr.getch()
+            if ch in (27, ord("q")):
+                return
+            if ch == curses.KEY_RESIZE:
+                break
+            if ch in (curses.KEY_DOWN, 14):
+                off = min(max_off, off + 1)
+            elif ch in (curses.KEY_UP, 16):
+                off = max(0, off - 1)
+            elif ch == curses.KEY_NPAGE:
+                off = min(max_off, off + page)
+            elif ch == curses.KEY_PPAGE:
+                off = max(0, off - page)
+
+
+def _tui(stdscr, rows, now, state):
+    import curses, textwrap
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    try:
+        curses.use_default_colors()
+    except curses.error:
+        pass
+
+    def base_hits():
+        return collect_hits(rows, project=state["project"], days=state["days"],
+                            since=state["since"], until=state["until"],
+                            no_dedup=state["no_dedup"], oldest=state["oldest"], now=now)
+
+    def apply(base, query):
+        if not query:
+            return list(base)
+        scored = []
+        for hh in base:
+            s = fuzzy_score(query, hh["display"])
+            if s is not None:
+                scored.append((s, hh["timestamp"], hh))
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return [hh for _, _, hh in scored]
+
+    base = base_hits()
+    query = state["query"]
+    filtered = apply(base, query)
+    sel, flash = 0, ""
+    legend = ("↑↓ move · ⏎ print · ^Y copy · ^B id · "
+              "^V view · ^G proj · ^T days · ^R dedup · ^O order · esc quit")
+
+    def refilter():
+        nonlocal base, filtered, sel
+        base = base_hits()
+        filtered = apply(base, query)
+        sel = 0
+
+    while True:
+        h, w = stdscr.getmaxyx()
+        if h < 6 or w < 24:
+            stdscr.erase()
+            _addstr(stdscr, 0, 0, "terminal too small", w)
+            stdscr.refresh()
+            if stdscr.getch() in (27, 3):
+                return None
+            continue
+        preview_h = max(4, h // 4)
+        legend_y = h - 1
+        preview_top = legend_y - preview_h
+        list_top, list_h = 2, max(1, (preview_top - 1) - 2)
+        if filtered:
+            sel = max(0, min(sel, len(filtered) - 1))
+        top = max(0, sel - list_h + 1) if sel >= list_h else 0
+
+        stdscr.erase()
+        _addstr(stdscr, 0, 0, "> " + query, w, curses.A_BOLD)
+        status = _status_tags(state, len(filtered), len(base))
+        if flash:
+            status += "   " + flash
+        _addstr(stdscr, 1, 0, status, w, curses.A_DIM)
+        for i in range(list_h):
+            idx = top + i
+            if idx >= len(filtered):
+                break
+            hh = filtered[idx]
+            dt = when(hh["timestamp"])
+            reps = f" ×{hh['_n']}" if hh["_n"] > 1 else ""
+            proj = os.path.basename(hh.get("project", "") or "?")
+            row = f"{pid(hh['display'])} {dt.strftime('%b %d')} {proj}{reps}  " \
+                  f"{' '.join(hh['display'].split())}"
+            _addstr(stdscr, list_top + i, 0, row, w,
+                    curses.A_REVERSE if idx == sel else 0)
+        _addstr(stdscr, preview_top - 1, 0, "─" * w, w, curses.A_DIM)
+        if filtered:
+            hh = filtered[sel]
+            dt = when(hh["timestamp"])
+            proj = os.path.basename(hh.get("project", "") or "?")
+            meta = f"{pid(hh['display'])} · {dt.strftime('%Y-%m-%d %H:%M')} · {proj}"
+            if hh["_n"] > 1:
+                meta += f" · ×{hh['_n']}"
+            _addstr(stdscr, preview_top, 0, meta, w, curses.A_BOLD)
+            wrapped = []
+            for para in hh["display"].split("\n"):
+                wrapped.extend(textwrap.wrap(para, max(1, w - 1)) or [""])
+            for j, ln in enumerate(wrapped[: preview_h - 1]):
+                _addstr(stdscr, preview_top + 1 + j, 0, ln, w)
+        else:
+            _addstr(stdscr, preview_top, 0, "(no matches)", w)
+        _addstr(stdscr, legend_y, 0, legend, w, curses.A_REVERSE)
+        stdscr.refresh()
+
+        ch = stdscr.getch()
+        flash = ""
+        if ch == curses.KEY_RESIZE:
+            continue
+        elif ch in (27, 3):
+            return None
+        elif ch in (curses.KEY_ENTER, 10, 13):
+            if filtered:
+                return ("print", filtered[sel]["display"])
+        elif ch in (curses.KEY_UP, 16):
+            sel = max(0, sel - 1)
+        elif ch in (curses.KEY_DOWN, 14):
+            sel = min(len(filtered) - 1, sel + 1) if filtered else 0
+        elif ch == curses.KEY_NPAGE:
+            sel = min(len(filtered) - 1, sel + list_h) if filtered else 0
+        elif ch == curses.KEY_PPAGE:
+            sel = max(0, sel - list_h)
+        elif ch == 21:  # ^U clear query
+            query = ""
+            filtered = apply(base, query)
+            sel = 0
+        elif ch in (curses.KEY_BACKSPACE, 127, 8):
+            query = query[:-1]
+            filtered = apply(base, query)
+            sel = 0
+        elif ch == 25:  # ^Y copy prompt
+            if filtered:
+                tool = to_clipboard(filtered[sel]["display"])
+                flash = f"copied prompt → {tool}" if tool else "no clipboard tool found"
+        elif ch == 2:  # ^B copy id
+            if filtered:
+                tool = to_clipboard(pid(filtered[sel]["display"]))
+                flash = f"copied id → {tool}" if tool else "no clipboard tool found"
+        elif ch == 22:  # ^V view full text
+            if filtered:
+                hh = filtered[sel]
+                dt = when(hh["timestamp"])
+                proj = os.path.basename(hh.get("project", "") or "?")
+                _viewer(stdscr, f"{pid(hh['display'])} · "
+                        f"{dt.strftime('%Y-%m-%d %H:%M')} · {proj}", hh["display"])
+        elif ch == 7:  # ^G project filter
+            v = _ask(stdscr, 1, "project filter (empty=clear): ", w)
+            if v is not None:
+                state["project"] = v.strip() or None
+                refilter()
+        elif ch == 20:  # ^T last-N-days
+            v = _ask(stdscr, 1, "last N days (empty=clear): ", w)
+            if v is not None:
+                state["days"] = int(v) if v.strip().isdigit() else None
+                refilter()
+        elif ch == 18:  # ^R toggle dedup
+            state["no_dedup"] = not state["no_dedup"]
+            refilter()
+        elif ch == 15:  # ^O toggle order
+            state["oldest"] = not state["oldest"]
+            refilter()
+        elif 32 <= ch <= 126:
+            query += chr(ch)
+            filtered = apply(base, query)
+            sel = 0
+
+
+def run_interactive(args):
+    """Launch the picker. Returns True if it handled the request, False if curses
+    is unavailable (caller then falls back to the non-interactive listing)."""
+    try:
+        import curses  # noqa: F401
+    except Exception:
+        return False
+    rows = load()
+    now = when(rows[0]["timestamp"]) if rows else datetime.datetime.now()
+    state = {
+        "query": " ".join(args.terms) if args.terms else "",
+        "project": args.project,
+        "days": args.days,
+        "since": parse_date(args.since) if args.since else None,
+        "since_str": args.since,
+        "until": (parse_date(args.until) + datetime.timedelta(days=1)) if args.until else None,
+        "until_str": args.until,
+        "no_dedup": args.no_dedup,
+        "oldest": args.oldest,
+    }
+    import curses
+    try:
+        result = curses.wrapper(_tui, rows, now, state)
+    except Exception as e:
+        print(f"(interactive mode failed: {e}; showing list)", file=sys.stderr)
+        return False
+    if result and result[0] == "print":
+        print(result[1])
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("terms", nargs="*", help="search terms (AND, case-insensitive)")
@@ -141,6 +499,8 @@ def main():
                     help="with --copy, send the prompt to the system clipboard")
     ap.add_argument("--json", action="store_true", help="output matches as JSON")
     ap.add_argument("--projects", action="store_true", help="list projects with history")
+    ap.add_argument("-i", "--interactive", action="store_true",
+                    help="launch the interactive fuzzy picker (TTY only)")
     args = ap.parse_args()
 
     # Subcommand sugar: `ph copy N|ID [terms]` / `ph show N|ID [terms]` behave
@@ -153,11 +513,14 @@ def main():
         args.copy = args.terms[1]
         args.terms = args.terms[2:]
 
-    def parse_date(s):
-        try:
-            return datetime.datetime.strptime(s, "%Y-%m-%d")
-        except ValueError:
-            sys.exit(f"invalid date {s!r} — use YYYY-MM-DD")
+    # Interactive picker: only on a TTY, with no result flag, and either an
+    # explicit -i or no query (see should_interactive). Falls through to the
+    # normal listing if curses is unavailable.
+    if should_interactive(args, sys.stdout.isatty()):
+        if run_interactive(args):
+            return
+        print("(interactive mode unavailable: curses not importable; showing list)",
+              file=sys.stderr)
 
     rows = load()
     total = len(rows)
@@ -167,45 +530,12 @@ def main():
         projects_overview(rows)
         return
 
-    if args.days:
-        cut = now - datetime.timedelta(days=args.days)
-        rows = [r for r in rows if when(r["timestamp"]) >= cut]
-    if args.since:
-        s = parse_date(args.since)
-        rows = [r for r in rows if when(r["timestamp"]) >= s]
-    if args.until:
-        u = parse_date(args.until) + datetime.timedelta(days=1)  # inclusive of that day
-        rows = [r for r in rows if when(r["timestamp"]) < u]
-    if args.project:
-        p = args.project.lower()
-        rows = [r for r in rows if p in (r.get("project", "")).lower()]
-
-    if args.regex:
-        rx = re.compile(args.regex, re.I)
-        match, terms = (lambda d: rx.search(d)), []
-    elif args.terms:
-        terms = args.terms
-        low = [t.lower() for t in terms]
-        match, terms = (lambda d: all(t in d.lower() for t in low)), terms
-    else:
-        match, terms = None, []
-
-    # dedup identical prompts, keep newest, count repeats (unless --no-dedup)
-    seen, hits = {}, []
-    for r in rows:
-        if match is not None and not match(r["display"]):
-            continue
-        key = r["display"].strip()
-        if not args.no_dedup and key in seen:
-            seen[key]["_n"] += 1
-            continue
-        r = dict(r, _n=1)
-        if not args.no_dedup:
-            seen[key] = r
-        hits.append(r)
-
-    if args.oldest:
-        hits = hits[::-1]
+    since = parse_date(args.since) if args.since else None
+    until = (parse_date(args.until) + datetime.timedelta(days=1)) if args.until else None
+    terms = args.terms if (args.terms and not args.regex) else []
+    hits = collect_hits(rows, terms=(args.terms or None), regex=args.regex,
+                        project=args.project, days=args.days, since=since, until=until,
+                        no_dedup=args.no_dedup, oldest=args.oldest, now=now)
 
     # --copy / --show: dump one entry raw and stop. Accepts a row number or a
     # stable id (content hash). Optionally pipe it to the system clipboard.

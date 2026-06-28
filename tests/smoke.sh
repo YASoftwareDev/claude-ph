@@ -50,6 +50,10 @@ clip_out=$(run --copy 1 deploy staging --clip 2>/dev/null)
 [ "$(run show "$ID" deploy staging)" = "deploy the staging environment and check health" ]; pass "show-ID subcommand works without --"
 run copy paste | grep -q "no match"; pass "copy <non-id> stays a normal search (not hijacked)"
 
+# --- interactive mode: must NOT engage when stdout is not a TTY (piped here) ---
+run -i deploy staging | grep -q "unique match"; pass "-i is bypassed when stdout is not a TTY"
+run | grep -q "Reply with a number"; pass "bare run (no TTY) keeps the non-interactive listing"
+
 run --projects | grep -q "web-dashboard"; pass "--projects lists projects"
 run zzzznope | grep -q "no match"; pass "empty-state on no match"
 run --regex "deploy|tests" | grep -q "unique match"; pass "--regex search"
@@ -83,5 +87,8 @@ mkdir -p "$TMP/.claude/scripts"
 cp "$HERE/ph.py" "$TMP/.claude/scripts/ph.py"
 wrap=$(HOME="$TMP" sh "$HERE/ph" --copy 1 deploy staging)
 [ "$wrap" = "deploy the staging environment and check health" ]; pass "ph wrapper: passes args through to ph.py"
+
+# --- interactive-mode logic (pure functions; curses UI itself needs a pty) ---
+python3 "$HERE/tests/test_logic.py"; pass "interactive-mode logic unit tests"
 
 echo "ALL SMOKE TESTS PASSED"

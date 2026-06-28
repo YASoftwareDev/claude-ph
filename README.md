@@ -219,6 +219,52 @@ prompt regardless of position, dedup, or how the search was phrased. `--clip`
 auto-detects your clipboard tool (`wl-copy` / `pbcopy` / `xclip` / `xsel` /
 `clip.exe`); if none is available it just prints, so nothing breaks.
 
+## Interactive mode
+
+For driving `ph` from a standalone terminal pane — where Claude's
+rerun-by-number isn't available — there's a built-in fuzzy picker.
+
+**When it launches**
+
+| You run | Result |
+|---|---|
+| `ph` (bare) in a terminal | **interactive picker** |
+| `ph -i` / `ph --interactive` (in a terminal; any query pre-seeds the filter) | **interactive picker** |
+| `ph <query>` in a terminal | non-interactive listing (unchanged) |
+| `ph … \| cat`, `ph > file` (stdout not a TTY) | non-interactive output (unchanged, byte-for-byte) |
+| any of `--copy` / `--json` / `--projects` / `--clip` | non-interactive (these override `-i`) |
+
+So piping and every existing flag behave exactly as before; only a bare `ph` in
+a real terminal changes.
+
+**In the picker**
+
+- **Type** to fuzzy-filter live (case-insensitive subsequence; ranked by match
+  quality, then recency).
+- A **preview pane** shows the selected prompt's full untruncated text plus its
+  project, date, repeat count, and stable id.
+- A **status line** shows active filters and the match count.
+
+**Keys** (always-visible legend at the bottom):
+
+| Key | Action |
+|---|---|
+| type / `Backspace` / `^U` | edit / clear the fuzzy filter |
+| `↑` `↓`, `^P` `^N`, `PgUp` `PgDn` | move selection |
+| `Enter` | print the selected prompt raw to stdout and exit (for piping/reuse) |
+| `^Y` | copy the prompt to the system clipboard |
+| `^B` | copy the stable **id** to the clipboard |
+| `^V` | view full text, scrollable (`Esc`/`q` back) |
+| `^G` | set/clear **project** filter (inline prompt) |
+| `^T` | set/clear **last-N-days** filter (inline prompt) |
+| `^R` | toggle dedup |
+| `^O` | toggle order (newest ↔ oldest) |
+| `Esc` / `^C` | quit without output |
+
+**No new dependency.** The picker is a self-contained `curses` TUI (Python
+standard library only) — install stays a plain file copy. On a platform without
+`curses`, `ph` falls back to the non-interactive listing.
+
 ## How it works
 
 `ph.md` is a Claude Code custom slash command. Its body runs the bundled Python
@@ -227,8 +273,11 @@ the session, so results appear in the conversation — no separate terminal. The
 script (`ph.py`, standard library only) scans `~/.claude/history.jsonl`, filters,
 deduplicates, and formats the matches. The `ph` shell command is a one-line
 shim that runs that same `ph.py` directly, skipping the slash-command model turn
-entirely — same results, zero tokens. Everything is read-only: nothing in your
-Claude config is modified.
+entirely — same results, zero tokens. The interactive picker is part of the same
+`ph.py` and reuses its exact search/dedup/id logic (`collect_hits`), layering
+only fuzzy matching and rendering on top — so results are identical across all
+three surfaces. Everything is read-only: nothing in your Claude config is
+modified.
 
 ## License
 
