@@ -70,6 +70,11 @@ and what powers rerun-by-number). When you only want to *find* a past prompt, us
 `ph`; when you want Claude to grab one and run it for you, use `/ph`. Both read
 the same `~/.claude/history.jsonl` and accept the same flags.
 
+To keep that model turn cheap, `/ph` caps each result at a lean **280**
+characters, while the free-to-run `ph` shell command shows up to **840**. Either
+way you can override per call with `--width N` (it wins over the built-in
+default).
+
 ## Install
 
 ### As a Claude Code plugin (recommended)

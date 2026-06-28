@@ -4,7 +4,7 @@ argument-hint: [terms] | --full | --width N | --copy N|ID | --show N|ID | --clip
 allowed-tools: Bash(python3:*)
 ---
 
-!`python3 ~/.claude/scripts/ph.py $ARGUMENTS`
+!`python3 ~/.claude/scripts/ph.py --width 280 $ARGUMENTS`
 
 Above are the user's matching past prompts (numbered, newest first, duplicates collapsed with ×N repeat counts).
 
