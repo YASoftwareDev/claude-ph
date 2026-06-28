@@ -42,4 +42,14 @@ run --json deploy staging | python3 -c 'import sys,json; assert isinstance(json.
 [ "$(run --until 2000-01-01 --json deploy staging | count_json)" = "0" ]; pass "--until filters out newer entries"
 run --since notadate deploy 2>&1 | grep -q "invalid date"; pass "--since rejects a bad date"
 
+# --- ph shell wrapper (zero-token shim) ---
+sh -n "$HERE/ph"; pass "ph wrapper: valid shell syntax"
+[ -x "$HERE/ph" ]; pass "ph wrapper: executable bit set"
+# End-to-end: the wrapper must exec ph.py from $HOME/.claude/scripts and pass
+# args straight through. Stage a copy under the isolated HOME and invoke it.
+mkdir -p "$TMP/.claude/scripts"
+cp "$HERE/ph.py" "$TMP/.claude/scripts/ph.py"
+wrap=$(HOME="$TMP" sh "$HERE/ph" --copy 1 deploy staging)
+[ "$wrap" = "deploy the staging environment and check health" ]; pass "ph wrapper: passes args through to ph.py"
+
 echo "ALL SMOKE TESTS PASSED"

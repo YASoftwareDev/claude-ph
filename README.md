@@ -46,6 +46,25 @@ every day, no cap.
 - **Friendly dates** — `Apr 18 17:55 · 2mo ago`.
 - `--full` for complete prompt text, `--copy N` to print one prompt raw,
   `--projects` for an overview of every project that has history.
+- **Zero-token shell command** — a bundled `ph` wrapper runs the same search
+  straight from your terminal (or `!ph` inside Claude Code) with no model turn,
+  so plain searches cost nothing. See [`/ph` vs `ph`](#ph-vs-ph--interactive-vs-zero-token).
+
+## `/ph` vs `ph` — interactive vs zero-token
+
+There are two front-ends to the same searcher, and the difference is cost:
+
+| | `/ph <terms>` (slash command) | `ph <terms>` (shell command) |
+|---|---|---|
+| Where | Inside a Claude Code session | Any terminal, or `!ph` inside Claude Code |
+| Cost | A model turn — Claude reads the results, **spends tokens** | **Zero tokens** — pure local filtering |
+| Extra | **Rerun-by-number**: reply with a number to re-issue that prompt | None — it just prints results |
+
+A `.md` slash command always becomes a model turn: the `!`-executed script output
+is handed to Claude, which then reads it and replies (that's where the tokens go,
+and what powers rerun-by-number). When you only want to *find* a past prompt, use
+`ph`; when you want Claude to grab one and run it for you, use `/ph`. Both read
+the same `~/.claude/history.jsonl` and accept the same flags.
 
 ## Install
 
@@ -61,11 +80,18 @@ From inside Claude Code:
 The plugin bundles its own copy of the script, so there is nothing to place in
 `~/.claude` by hand and updates come through `/plugin`.
 
+> The plugin delivers the **`/ph` slash command** only. To also get the
+> zero-token **`ph` shell command**, use the one-line installer below — a plugin
+> can't place an executable on your `PATH`.
+
 ### One line
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/YASoftwareDev/claude-ph/main/install.sh | sh
 ```
+
+This installs the `/ph` slash command **and** the zero-token `ph` shell command
+(into `~/.local/bin`); it warns if that directory is not on your `PATH`.
 
 ### Or by hand
 
@@ -75,6 +101,13 @@ Two files, two locations under your Claude Code config directory:
 mkdir -p ~/.claude/scripts ~/.claude/commands
 cp ph.py  ~/.claude/scripts/ph.py     # the searcher
 cp ph.md  ~/.claude/commands/ph.md     # the /ph slash command
+```
+
+Optionally add the zero-token shell command (anywhere on your `PATH`):
+
+```sh
+mkdir -p ~/.local/bin
+cp ph ~/.local/bin/ph && chmod +x ~/.local/bin/ph   # then:  ph <terms>
 ```
 
 Either way, then **restart Claude Code** so it picks up the new command. That's
@@ -147,7 +180,9 @@ Say `edit 2: but target the asr repo` to tweak it before running.
 script via the command-execution (`!`) feature and injects the output back into
 the session, so results appear in the conversation — no separate terminal. The
 script (`ph.py`, standard library only) scans `~/.claude/history.jsonl`, filters,
-deduplicates, and formats the matches. Everything is read-only: nothing in your
+deduplicates, and formats the matches. The `ph` shell command is a one-line
+shim that runs that same `ph.py` directly, skipping the slash-command model turn
+entirely — same results, zero tokens. Everything is read-only: nothing in your
 Claude config is modified.
 
 ## License
