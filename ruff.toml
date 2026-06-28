@@ -1,0 +1,8 @@
+# Lint config for ph.py. The script intentionally uses a couple of compact
+# idioms that ruff's defaults flag; they are deliberate, so silence just those.
+line-length = 100
+
+[lint]
+# E401: multiple imports on one line  — intentional single stdlib import line.
+# E731: assign a lambda to a variable — intentional, builds the match predicate.
+ignore = ["E401", "E731"]

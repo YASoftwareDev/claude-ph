@@ -1,5 +1,8 @@
 # claude-ph
 
+[![ci](https://github.com/YASoftwareDev/claude-ph/actions/workflows/ci.yml/badge.svg)](https://github.com/YASoftwareDev/claude-ph/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Full-history search for your Claude Code prompts — across every project, all the way back, right inside the session.**
 
 `/ph` is a tiny Claude Code slash command that searches your *entire* prompt
@@ -42,6 +45,14 @@ every day, no cap.
 
 ## Install
 
+### One line
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/YASoftwareDev/claude-ph/main/install.sh | sh
+```
+
+### Or by hand
+
 Two files, two locations under your Claude Code config directory:
 
 ```sh
@@ -50,8 +61,8 @@ cp ph.py  ~/.claude/scripts/ph.py     # the searcher
 cp ph.md  ~/.claude/commands/ph.md     # the /ph slash command
 ```
 
-Then **restart Claude Code** so it picks up the new command. That's it — no
-dependencies beyond Python 3 (standard library only).
+Either way, then **restart Claude Code** so it picks up the new command. That's
+it — no dependencies beyond Python 3 (standard library only).
 
 > Prefer to let Claude install it for you? Open this repo in a Claude Code
 > session and ask it to "install this tool" — `CLAUDE.md` automates the copy.
