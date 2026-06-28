@@ -49,6 +49,18 @@ every day, no cap.
 
 ## Install
 
+### As a Claude Code plugin (recommended)
+
+From inside Claude Code:
+
+```
+/plugin marketplace add YASoftwareDev/claude-ph
+/plugin install claude-ph@claude-ph
+```
+
+The plugin bundles its own copy of the script, so there is nothing to place in
+`~/.claude` by hand and updates come through `/plugin`.
+
 ### One line
 
 ```sh
@@ -87,9 +99,13 @@ Inside a Claude Code session:
 | `--copy N` | Print **only** match N's full text, raw — clean to copy or rerun |
 | `--project NAME` | Restrict to projects whose path contains `NAME` |
 | `--days N` | Only prompts from the last `N` days |
+| `--since YYYY-MM-DD` | Only prompts on/after this date |
+| `--until YYYY-MM-DD` | Only prompts on/before this date |
 | `--limit N` | Show up to `N` matches (default 30) |
 | `--oldest` | Oldest matches first (default: newest first) |
+| `--no-dedup` | Show every occurrence; don't collapse duplicates |
 | `--regex P` | Treat the query as a single regular expression |
+| `--json` | Output matches as JSON (rank, timestamp, project, count, display) — for scripting |
 | `--projects` | List every project that has history, with prompt counts and date spans |
 
 See [`examples/example-output.md`](examples/example-output.md) for a full

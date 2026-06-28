@@ -10,10 +10,14 @@ Usage:
   ph.py --regex "PATTERN"        treat the query as one regex
   ph.py --project asr-eval cfg   restrict to projects whose path contains "asr-eval"
   ph.py --days 60 deploy         only the last 60 days
+  ph.py --since 2026-01-01 x     only entries on/after a date (YYYY-MM-DD)
+  ph.py --until 2026-03-31 x     only entries on/before a date (YYYY-MM-DD)
   ph.py --limit 80 train         show up to 80 matches (default 30)
   ph.py --full token             show full prompt text (no truncation)
   ph.py --oldest setup           oldest matches first (default: newest first)
+  ph.py --no-dedup token         show every occurrence (do not collapse duplicates)
   ph.py --copy 3 token           print ONLY match #3's full text (clean to copy/rerun)
+  ph.py --json token             output matches as JSON (for scripts/piping)
   ph.py --projects               list every project with history + counts/date span
 """
 import sys, os, json, re, argparse, datetime
@@ -87,12 +91,22 @@ def main():
     ap.add_argument("--regex", help="single regex pattern (overrides terms)")
     ap.add_argument("--project", help="only projects whose path contains this substring")
     ap.add_argument("--days", type=int, help="only entries within the last N days")
+    ap.add_argument("--since", help="only entries on/after this date (YYYY-MM-DD)")
+    ap.add_argument("--until", help="only entries on/before this date (YYYY-MM-DD)")
     ap.add_argument("--limit", type=int, default=30, help="max matches to show (default 30)")
     ap.add_argument("--full", action="store_true", help="show full prompt text (no truncation)")
     ap.add_argument("--oldest", action="store_true", help="oldest matches first")
+    ap.add_argument("--no-dedup", action="store_true", help="show every occurrence, don't collapse duplicates")
     ap.add_argument("--copy", type=int, metavar="N", help="print only match N's full text")
+    ap.add_argument("--json", action="store_true", help="output matches as JSON")
     ap.add_argument("--projects", action="store_true", help="list projects with history")
     args = ap.parse_args()
+
+    def parse_date(s):
+        try:
+            return datetime.datetime.strptime(s, "%Y-%m-%d")
+        except ValueError:
+            sys.exit(f"invalid date {s!r} — use YYYY-MM-DD")
 
     rows = load()
     total = len(rows)
@@ -105,6 +119,12 @@ def main():
     if args.days:
         cut = now - datetime.timedelta(days=args.days)
         rows = [r for r in rows if when(r["timestamp"]) >= cut]
+    if args.since:
+        s = parse_date(args.since)
+        rows = [r for r in rows if when(r["timestamp"]) >= s]
+    if args.until:
+        u = parse_date(args.until) + datetime.timedelta(days=1)  # inclusive of that day
+        rows = [r for r in rows if when(r["timestamp"]) < u]
     if args.project:
         p = args.project.lower()
         rows = [r for r in rows if p in (r.get("project", "")).lower()]
@@ -119,17 +139,18 @@ def main():
     else:
         match, terms = None, []
 
-    # dedup identical prompts, keep newest, count repeats
+    # dedup identical prompts, keep newest, count repeats (unless --no-dedup)
     seen, hits = {}, []
     for r in rows:
         if match is not None and not match(r["display"]):
             continue
         key = r["display"].strip()
-        if key in seen:
+        if not args.no_dedup and key in seen:
             seen[key]["_n"] += 1
             continue
         r = dict(r, _n=1)
-        seen[key] = r
+        if not args.no_dedup:
+            seen[key] = r
         hits.append(r)
 
     if args.oldest:
@@ -145,6 +166,14 @@ def main():
 
     shown = hits[: args.limit]
     q = args.regex or (" ".join(terms) if terms else "(recent, all projects)")
+
+    if args.json:
+        print(json.dumps([
+            {"rank": i, "timestamp": when(r["timestamp"]).isoformat(timespec="seconds"),
+             "project": r.get("project", ""), "count": r["_n"], "display": r["display"]}
+            for i, r in enumerate(shown, 1)
+        ], indent=2, ensure_ascii=False))
+        return
 
     if not hits:
         print(f"prompt-history: no match for {q!r} (scanned {total} prompts).")

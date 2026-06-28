@@ -1,0 +1,14 @@
+{
+  "name": "claude-ph",
+  "owner": { "name": "YASoftwareDev", "url": "https://github.com/YASoftwareDev" },
+  "plugins": [
+    {
+      "name": "claude-ph",
+      "source": "./",
+      "description": "Full-history search for Claude Code prompts — /ph searches all of ~/.claude/history.jsonl, past the native 100-prompt Ctrl+R cap",
+      "version": "1.2.0",
+      "license": "MIT",
+      "keywords": ["claude-code", "prompt-history", "search", "cli", "slash-command"]
+    }
+  ]
+}

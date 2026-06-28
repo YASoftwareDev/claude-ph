@@ -33,4 +33,13 @@ run --projects | grep -q "web-dashboard"; pass "--projects lists projects"
 run zzzznope | grep -q "no match"; pass "empty-state on no match"
 run --regex "deploy|tests" | grep -q "unique match"; pass "--regex search"
 
+# --- new flags ---
+count_json() { python3 -c 'import sys,json; print(len(json.load(sys.stdin)))'; }
+run --json deploy staging | python3 -c 'import sys,json; assert isinstance(json.load(sys.stdin), list)'; pass "--json emits a JSON array"
+[ "$(run --json deploy staging | count_json)" = "2" ]; pass "--json respects dedup (2 unique)"
+[ "$(run --no-dedup --json deploy staging | count_json)" = "3" ]; pass "--no-dedup keeps duplicates (3)"
+[ "$(run --since 2099-01-01 --json deploy staging | count_json)" = "0" ]; pass "--since filters out older entries"
+[ "$(run --until 2000-01-01 --json deploy staging | count_json)" = "0" ]; pass "--until filters out newer entries"
+run --since notadate deploy 2>&1 | grep -q "invalid date"; pass "--since rejects a bad date"
+
 echo "ALL SMOKE TESTS PASSED"
