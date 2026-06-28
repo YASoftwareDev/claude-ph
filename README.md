@@ -133,6 +133,7 @@ Inside a Claude Code session:
 | Flag | Effect |
 |------|--------|
 | `--full` | Show full prompt text instead of truncating long prompts |
+| `--width N` | Show up to `N` characters per result before truncating (default 280) |
 | `--copy N\|ID` | Print **only** that match's full text, raw — by row number **or** stable id |
 | `--show N\|ID` | Alias of `--copy` |
 | `--clip` | With `--copy`/`--show`, send the prompt straight to the system clipboard |

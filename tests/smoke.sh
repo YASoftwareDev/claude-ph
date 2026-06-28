@@ -57,6 +57,12 @@ run --json deploy staging | python3 -c 'import sys,json; assert isinstance(json.
 [ "$(run --until 2000-01-01 --json deploy staging | count_json)" = "0" ]; pass "--until filters out newer entries"
 run --since notadate deploy 2>&1 | grep -q "invalid date"; pass "--since rejects a bad date"
 
+# --- --width: per-result truncation budget ---
+run --width 12 deploy staging | grep -q '\.\.\.'; pass "--width truncates to a smaller budget"
+if run --width 12 deploy staging | grep -q "check health"; then echo "FAIL: --width did not truncate"; exit 1; fi
+pass "--width hides text beyond the budget"
+run --full deploy staging | grep -q "check health"; pass "--full shows the complete prompt"
+
 # --- ph shell wrapper (zero-token shim) ---
 sh -n "$HERE/ph"; pass "ph wrapper: valid shell syntax"
 [ -x "$HERE/ph" ]; pass "ph wrapper: executable bit set"

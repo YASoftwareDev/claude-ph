@@ -14,6 +14,7 @@ Usage:
   ph.py --until 2026-03-31 x     only entries on/before a date (YYYY-MM-DD)
   ph.py --limit 80 train         show up to 80 matches (default 30)
   ph.py --full token             show full prompt text (no truncation)
+  ph.py --width 600 token        show up to 600 chars per result (default 280)
   ph.py --oldest setup           oldest matches first (default: newest first)
   ph.py --no-dedup token         show every occurrence (do not collapse duplicates)
   ph.py --copy 3 token           print ONLY match #3's full text (clean to copy/rerun)
@@ -129,6 +130,8 @@ def main():
     ap.add_argument("--until", help="only entries on/before this date (YYYY-MM-DD)")
     ap.add_argument("--limit", type=int, default=30, help="max matches to show (default 30)")
     ap.add_argument("--full", action="store_true", help="show full prompt text (no truncation)")
+    ap.add_argument("--width", type=int, default=TRUNC, metavar="N",
+                    help=f"max characters shown per result before truncating (default {TRUNC}); --full overrides")
     ap.add_argument("--oldest", action="store_true", help="oldest matches first")
     ap.add_argument("--no-dedup", action="store_true", help="show every occurrence, don't collapse duplicates")
     ap.add_argument("--copy", "--show", dest="copy", metavar="N|ID",
@@ -246,8 +249,8 @@ def main():
         proj = os.path.basename(r.get("project", "") or "?")
         reps = f"  ×{r['_n']}" if r["_n"] > 1 else ""
         text = " ".join(r["display"].split())
-        if not args.full and len(text) > TRUNC:
-            text = text[: TRUNC - 3] + "..."
+        if not args.full and len(text) > args.width:
+            text = (text[: args.width - 3] + "...") if args.width > 3 else text[: args.width]
         if terms:
             text = highlight(text, terms)
         print(f"[{i}] {pid(r['display'])} · {stamp} · {rel(dt, now):>9}  ({proj}){reps}\n    {text}\n")
