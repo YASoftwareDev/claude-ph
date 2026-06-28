@@ -235,6 +235,23 @@ def fuzzy_score(query, text):
     return -(span + 2 * gaps + first)
 
 
+def fuzzy_positions(query, text):
+    """Indices in `text` hit by the greedy, case-insensitive subsequence match
+    of `query` — so the picker can emphasise the matched characters. Returns []
+    for an empty query and None when there is no match."""
+    if not query:
+        return []
+    t = text.lower()
+    out, start = [], 0
+    for ch in query.lower():
+        nxt = t.find(ch, start)
+        if nxt == -1:
+            return None
+        out.append(nxt)
+        start = nxt + 1
+    return out
+
+
 def should_interactive(args, stdout_isatty):
     """Decide whether to launch the interactive picker. Pure / unit-tested.
     Result flags and a non-TTY stdout always force the non-interactive path."""
@@ -257,6 +274,21 @@ def _addstr(stdscr, y, x, text, w, attr=0):
         stdscr.addnstr(y, x, text, max(0, w - x), attr)
     except curses.error:
         pass
+
+
+def _addstr_hl(stdscr, y, x, text, w, positions, base, hl):
+    """Draw `text` at (y, x), applying `hl` to character indices in `positions`
+    (a set) and `base` to the rest. Clamps to width `w`."""
+    import curses
+    col = x
+    for i, ch in enumerate(text):
+        if col >= w - 1:
+            break
+        try:
+            stdscr.addnstr(y, col, ch, 1, hl if i in positions else base)
+        except curses.error:
+            pass
+        col += 1
 
 
 def _status_tags(state, n_filtered, n_base):
@@ -335,8 +367,12 @@ def _tui(stdscr, rows, now, state):
     import curses, textwrap
     curses.curs_set(0)
     stdscr.keypad(True)
+    hl_color = 0
     try:
         curses.use_default_colors()
+        if curses.has_colors():
+            curses.init_pair(1, curses.COLOR_YELLOW, -1)
+            hl_color = curses.color_pair(1)
     except curses.error:
         pass
 
@@ -400,10 +436,15 @@ def _tui(stdscr, rows, now, state):
             dt = when(hh["timestamp"])
             reps = f" ×{hh['_n']}" if hh["_n"] > 1 else ""
             proj = os.path.basename(hh.get("project", "") or "?")
-            row = f"{pid(hh['display'])} {dt.strftime('%b %d')} {proj}{reps}  " \
-                  f"{' '.join(hh['display'].split())}"
-            _addstr(stdscr, list_top + i, 0, row, w,
-                    curses.A_REVERSE if idx == sel else 0)
+            prefix = f"{pid(hh['display'])} {dt.strftime('%b %d')} {proj}{reps}  "
+            body = " ".join(hh["display"].split())
+            rowattr = curses.A_REVERSE if idx == sel else 0
+            # Emphasise the fuzzy-matched characters (bold, + colour when not the
+            # selected row, where reverse-video already marks it).
+            hl = rowattr | curses.A_BOLD | (0 if idx == sel else hl_color)
+            positions = set(fuzzy_positions(query, body) or ())
+            _addstr(stdscr, list_top + i, 0, prefix, w, rowattr)
+            _addstr_hl(stdscr, list_top + i, len(prefix), body, w, positions, rowattr, hl)
         _addstr(stdscr, preview_top - 1, 0, "─" * w, w, curses.A_DIM)
         if filtered:
             hh = filtered[sel]

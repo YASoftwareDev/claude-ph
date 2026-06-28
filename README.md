@@ -240,7 +240,8 @@ a real terminal changes.
 **In the picker**
 
 - **Type** to fuzzy-filter live (case-insensitive subsequence; ranked by match
-  quality, then recency).
+  quality, then recency). The matched characters are **emphasised** (bold +
+  colour) in each result so you can see *why* a row matched.
 - A **preview pane** shows the selected prompt's full untruncated text plus its
   project, date, repeat count, and stable id.
 - A **status line** shows active filters and the match count.

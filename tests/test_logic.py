@@ -52,6 +52,15 @@ check(ph.fuzzy_score("abc", "abcdef") > ph.fuzzy_score("abc", "a_b_c"),
 check(ph.fuzzy_score("rel", "release now") > ph.fuzzy_score("rel", "the release"),
       "earlier match beats later")
 
+# --- fuzzy_positions: matched-char indices for highlighting ---
+check(ph.fuzzy_positions("", "abc") == [], "empty query -> no positions")
+check(ph.fuzzy_positions("xyz", "abc") is None, "no match -> None")
+check(ph.fuzzy_positions("ac", "abc") == [0, 2], "greedy subsequence indices")
+check(ph.fuzzy_positions("AC", "abc") == [0, 2], "case-insensitive indices")
+check(ph.fuzzy_positions("rel", "a release") == [2, 3, 4], "indices into original text")
+check(all(0 <= p < len("release") for p in ph.fuzzy_positions("ree", "release")),
+      "positions stay in bounds")
+
 # --- collect_hits: dedup, count, order, filters (the shared core) ---
 rows = [
     {"display": "deploy staging", "timestamp": 300, "project": "/u/web"},
