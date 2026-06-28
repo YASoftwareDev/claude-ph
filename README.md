@@ -75,6 +75,13 @@ characters, while the free-to-run `ph` shell command shows up to **840**. Either
 way you can override per call with `--width N` (it wins over the built-in
 default).
 
+> **Zero-token discipline.** `ph` runs entirely in your shell — no model is
+> involved. An assistant (Claude included) should treat a bare `ph` run as
+> self-contained and **not** "helpfully" re-run the search or explain the
+> output; that would spend the very tokens `ph` exists to save. Token-spending
+> interaction belongs to `/ph` only. (This is stated as an obligatory rule for
+> assistants in [`CLAUDE.md`](CLAUDE.md).)
+
 ## Install
 
 ### As a Claude Code plugin (recommended)

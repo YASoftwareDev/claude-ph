@@ -1,6 +1,6 @@
 {
   "name": "claude-ph",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Full-history search for Claude Code prompts — /ph searches all of ~/.claude/history.jsonl, past the native 100-prompt Ctrl+R cap",
   "author": { "name": "YASoftwareDev", "url": "https://github.com/YASoftwareDev" },
   "homepage": "https://github.com/YASoftwareDev/claude-ph",

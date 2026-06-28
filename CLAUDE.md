@@ -14,6 +14,26 @@ native `Ctrl+R` picker's documented limit of the 100 most recent unique prompts.
 - `ph` — an optional one-line shell shim (`~/.local/bin/ph`) that runs the same
   searcher with no model turn, for zero-token searches from a terminal or `!ph`.
 
+## Zero-token etiquette (obligatory)
+
+`ph` exists to search prompt history with **zero model tokens** — it runs
+entirely in the user's shell. So when the user runs `ph` or `!ph` themselves,
+**do not respond with token-spending work**: no follow-up `ph` calls, no
+re-running their search, no long explanations, no "here's what that means"
+commentary. The results are already on their screen; reacting at all burns the
+very tokens the tool exists to save, defeating its entire purpose.
+
+- After a bare `ph` / `!ph` run: stay silent, or reply in **one short line at
+  most** — and only if it genuinely adds something.
+- Act or explain **only** when the user actually asks a question or requests a
+  change.
+- `/ph` (the slash command) is the one interactive surface that legitimately
+  spends tokens — to power rerun-by-number. Reserve token-spending interaction
+  for `/ph`, never for `ph`.
+
+This applies to any assistant using this tool, not just one user's setup — it is
+part of the tool's contract.
+
 ## Install / update on request
 
 When the user asks to **install**, **set up**, or **update** this tool, do this
