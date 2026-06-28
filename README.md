@@ -10,9 +10,14 @@ history. It exists because Claude Code's built-in recall can't.
 Claude Code's native prompt recall — the `↑` arrow and the `Ctrl+R` reverse
 search — only loads the **100 most recent unique prompts** in the selected
 scope. This is official, documented behavior (see the *Command history* section
-of the Claude Code interactive-mode docs), and it is **not configurable**: there
-is no setting, environment variable, or flag to raise the cap, and the feature
-requests asking for it have been closed.
+of the [Claude Code interactive-mode docs](https://code.claude.com/docs/en/interactive-mode#command-history)),
+and it is **not configurable**: there is no setting, environment variable, or
+flag to raise the cap. Feature requests asking for deeper / searchable history
+have been closed without a shipped solution — e.g.
+[anthropics/claude-code#11923](https://github.com/anthropics/claude-code/issues/11923)
+(searchable prompt history via a `/history` command) and
+[anthropics/claude-code#40369](https://github.com/anthropics/claude-code/issues/40369)
+(dedicated history viewer, closed as *not planned*).
 
 For an active user that 100-entry window is often **only about a week** of work.
 Yet every prompt you have ever typed is sitting in `~/.claude/history.jsonl`
@@ -71,6 +76,10 @@ Inside a Claude Code session:
 | `--oldest` | Oldest matches first (default: newest first) |
 | `--regex P` | Treat the query as a single regular expression |
 | `--projects` | List every project that has history, with prompt counts and date spans |
+
+See [`examples/example-output.md`](examples/example-output.md) for a full
+sample session showing the numbered results, highlighting, `×N` collapsing,
+`--copy`, and `--projects` output.
 
 ### Worked examples
 
