@@ -95,7 +95,11 @@ def pid(display):
 def to_clipboard(text):
     """Best-effort copy to the system clipboard. Returns the tool used, or None.
 
-    Stdlib only: probes for a clipboard CLI and pipes to the first one found.
+    Stdlib only. Tries, in order: a native clipboard CLI (needs a local
+    display/session) → tmux's buffer (works headless/over SSH; with
+    set-clipboard on, tmux also forwards to the outer clipboard) → an OSC 52
+    terminal escape (routes the copy to your local machine's clipboard over
+    SSH/containers, if the terminal allows it). Returns the mechanism, or None.
     """
     import shutil, subprocess
     for cmd in (["wl-copy"], ["pbcopy"], ["xclip", "-selection", "clipboard"],
@@ -107,7 +111,40 @@ def to_clipboard(text):
                 return cmd[0]
             except Exception:
                 continue
+    if os.environ.get("TMUX") and shutil.which("tmux"):
+        for tmux_cmd in (["tmux", "load-buffer", "-w", "-"],  # -w also forwards to the outer clipboard
+                         ["tmux", "load-buffer", "-"]):       # older tmux: buffer only (cfv can pull it)
+            try:
+                subprocess.run(tmux_cmd, input=text.encode("utf-8"), check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return "tmux"
+            except Exception:
+                continue
+    if _osc52(text):
+        return "osc52"
     return None
+
+
+def osc52_sequence(text):
+    """Build the OSC 52 'set clipboard' escape for `text` (base64-encoded)."""
+    import base64
+    b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    return f"\033]52;c;{b64}\a"
+
+
+def _osc52(text):
+    """Write the OSC 52 escape to the controlling terminal. Returns success.
+
+    The terminal (and tmux, if any) must permit OSC 52; we can't detect that, so
+    this is best-effort — callers fall back to printing the prompt instead.
+    """
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write(osc52_sequence(text))
+            tty.flush()
+        return True
+    except Exception:
+        return False
 
 
 def projects_overview(rows):
@@ -414,11 +451,11 @@ def _tui(stdscr, rows, now, state):
         elif ch == 25:  # ^Y copy prompt
             if filtered:
                 tool = to_clipboard(filtered[sel]["display"])
-                flash = f"copied prompt → {tool}" if tool else "no clipboard tool found"
+                flash = f"copied prompt → {tool}" if tool else "clipboard unavailable (no tool / OSC52 blocked) — use ⏎ to print"
         elif ch == 2:  # ^B copy id
             if filtered:
                 tool = to_clipboard(pid(filtered[sel]["display"]))
-                flash = f"copied id → {tool}" if tool else "no clipboard tool found"
+                flash = f"copied id → {tool}" if tool else "clipboard unavailable (no tool / OSC52 blocked) — use ⏎ to print"
         elif ch == 22:  # ^V view full text
             if filtered:
                 hh = filtered[sel]
@@ -558,7 +595,7 @@ def main():
         if args.clip:
             tool = to_clipboard(text)
             note = (f"copied to clipboard via {tool}" if tool
-                    else "no clipboard tool found (wl-copy/pbcopy/xclip/xsel/clip.exe); printed below instead")
+                    else "clipboard unavailable (no tool / tmux / OSC52); printed below instead")
             print(note, file=sys.stderr)
         print(text)
         return
