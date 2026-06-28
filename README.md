@@ -8,6 +8,10 @@
 `/ph` is a tiny Claude Code slash command that searches your *entire* prompt
 history. It exists because Claude Code's built-in recall can't.
 
+![/ph in action](examples/screenshot.png)
+
+<sub>Output shown with synthetic data. Search terms are highlighted; `×3` marks a prompt you reused 3 times.</sub>
+
 ## Why it exists
 
 Claude Code's native prompt recall — the `↑` arrow and the `Ctrl+R` reverse
