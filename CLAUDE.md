@@ -13,6 +13,9 @@ native `Ctrl+R` picker's documented limit of the 100 most recent unique prompts.
 - `ph.md` — the `/ph` custom slash command that runs `ph.py` and injects results.
 - `ph` — an optional one-line shell shim (`~/.local/bin/ph`) that runs the same
   searcher with no model turn, for zero-token searches from a terminal or `!ph`.
+  A bare `ph` in a terminal (or `ph -i`) opens an interactive `curses` fuzzy
+  picker (stdlib only, read-only); piping or any result flag bypasses it. The
+  picker reuses `ph.py`'s `collect_hits` — it does not fork the search logic.
 
 ## Zero-token etiquette (obligatory)
 
